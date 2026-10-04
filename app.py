@@ -319,10 +319,10 @@ with a:
     st.subheader(row.label)
     if night_mode:
         curve=track(row,dates,lat,lon,tz).rename_axis('Local time').reset_index()
-        chart=alt.Chart(curve.melt('Local time',var_name='Object',value_name='Altitude')).mark_line().encode(
-            x=alt.X('Local time:T',title='Time'),y=alt.Y('Altitude:Q',title='Altitude (degrees)'),
+        chart=alt.Chart(curve.melt('Local time',var_name='Object',value_name='Degrees')).mark_line().encode(
+            x=alt.X('Local time:T',title='Time'),y=alt.Y('Degrees:Q',title='Altitude (degrees)'),
             color=alt.Color('Object:N',scale=alt.Scale(range=['#d74747','#8c2525'])),
-            tooltip=['Local time:T','Object:N','Altitude:Q']
+            tooltip=['Local time:T','Object:N','Degrees:Q']
         ).properties(background='#000000').configure_axis(labelColor='#d74747',titleColor='#d74747',gridColor='#351010',domainColor='#682020',tickColor='#682020').configure_legend(labelColor='#d74747',titleColor='#d74747').configure_view(stroke='#682020')
         st.altair_chart(chart,use_container_width=True)
     else:
