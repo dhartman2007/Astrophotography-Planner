@@ -59,10 +59,24 @@ if night_mode:
 [data-baseweb="popover"] *,[role="option"] {color:#d74747 !important;background:#080000 !important;}
 </style>""",unsafe_allow_html=True)
 
-if mobile:
-    st.markdown('### [← Switch to desktop version](?view=desktop)')
-else:
-    st.markdown('### [Switch to mobile / Samsung Fold version →](?view=mobile)')
+st.markdown("""<style>
+.dw-view-switch {
+ position:fixed; top:calc(.25rem + env(safe-area-inset-top, 0px));
+ right:calc(.75rem + env(safe-area-inset-right, 0px));
+ z-index:1000001; font-size:12px; line-height:1.4;
+ padding:12px 8px; color:var(--dw-text); background:var(--dw-background);
+ text-decoration:underline; border-radius:4px;
+}
+[data-testid="stToolbar"] {right:9rem;}
+.dw-view-switch:focus-visible {outline:2px solid var(--dw-text);outline-offset:2px;}
+</style>""",unsafe_allow_html=True)
+switch_view = 'desktop' if mobile else 'mobile'
+switch_label = 'Desktop version' if mobile else 'Mobile version'
+st.markdown(
+    f'<a class="dw-view-switch" href="?view={switch_view}" target="_self" '
+    f'aria-label="Switch to {switch_view} version">{switch_label}</a>',
+    unsafe_allow_html=True,
+)
 if mobile:
     st.markdown("""<style>
 [data-testid="stMainBlockContainer"] {padding:1rem 1rem 3rem; max-width:1100px;}
