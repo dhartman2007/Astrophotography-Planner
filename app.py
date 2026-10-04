@@ -6,7 +6,21 @@ import streamlit as st
 from plan_pdf import build_plan_pdf
 from imaging_guidance import guidance
 from core import catalog, plan, track, records, save, image_urls, forecast, DATA, remember_api_key, remembered_api_key, forecast_us_units, planned_targets, set_planned
-st.set_page_config(page_title='Darkwave Target Planner',page_icon='🔭',layout='wide')
+mobile = st.query_params.get('view','desktop') == 'mobile'
+st.set_page_config(page_title='Darkwave Target Planner',page_icon='🔭',layout='wide',initial_sidebar_state='collapsed' if mobile else 'auto')
+st.markdown('**Display:** [Desktop](?view=desktop) · [Mobile / Samsung Fold](?view=mobile)')
+if mobile:
+    st.markdown("""<style>
+[data-testid="stMainBlockContainer"] {padding:1rem 1rem 3rem; max-width:1100px;}
+[data-testid="stButton"] button,[data-testid="stDownloadButton"] button,[data-testid="stLinkButton"] a {min-height:44px;width:100%;}
+[data-testid="stCheckbox"] label {min-height:44px;align-items:center;}
+[data-testid="stTextInput"] input,[data-testid="stNumberInput"] input {font-size:16px;}
+[data-testid="stMarkdownContainer"] p {overflow-wrap:anywhere;}
+@media(max-width:600px) {
+[data-testid="stHorizontalBlock"] {flex-direction:column;}
+[data-testid="stColumn"] {width:100% !important;flex:1 1 100% !important;}
+}
+</style>""",unsafe_allow_html=True)
 st.title('🔭 Darkwave Target Planner')
 st.caption('Messier • NGC • IC | Plan a night, explore the sky, track your images')
 OBJECT_TYPE_LABELS = {
@@ -35,7 +49,8 @@ OBJECT_TYPE_LABELS = {
 
 settings_file=DATA/'settings.json'
 settings=json.loads(settings_file.read_text()) if settings_file.exists() else {}
-with st.sidebar:
+settings_panel=st.expander('Location, date & observing settings') if mobile else st.sidebar
+with settings_panel:
     st.header('Observing location')
     place=st.text_input('Location name',settings.get('place','Foley, Alabama'))
     lat=st.number_input('Latitude',-90.0,90.0,float(settings.get('lat',30.4066)),format='%.5f')
@@ -68,7 +83,7 @@ except Exception as e:
     st.caption(str(e));st.stop()
 logs=records()
 query=st.text_input('Search object, common name, or constellation',placeholder='M27, NGC6992, Andromeda…')
-c1,c2,c3=st.columns(3)
+c1,c2,c3=(st.container(),st.container(),st.container()) if mobile else st.columns(3)
 collection=c1.selectbox('Catalog',['Messier','NGC','IC','All'])
 types=c2.multiselect('Object types',sorted(df.Type.unique()),
                      format_func=lambda code: f'{code} — {OBJECT_TYPE_LABELS.get(code, code)}')
@@ -116,14 +131,43 @@ def edit_target_table():
     # A fresh editor prevents old edit deltas from being reapplied on later reruns.
     st.session_state['table_revision'] = st.session_state.get('table_revision', 0) + 1
 
-st.data_editor(shown.drop(columns='Name'),hide_index=True,use_container_width=True,
-               key=table_key,on_change=edit_target_table,
-               disabled=[column for column in shown.columns if column not in ('Name', 'Explore', 'Tonight’s plan')],
-               column_config={'Type': st.column_config.TextColumn('Type',help='Object classification code. Expand Legend below for the full meanings.'),
-                              'Explore': st.column_config.CheckboxColumn('Explore',help='Check to show this target’s details below.'),
-                              'Tonight’s plan': st.column_config.CheckboxColumn('Tonight’s plan',help='Add or remove this target for the selected date.')})
-st.caption('Check Tonight’s plan to add or remove a target. Check Explore to display its details below.')
+def mobile_choose_target(target):
+    st.session_state['explore_target']=target
 
+def mobile_plan_change(target,key):
+    set_planned(day,target,st.session_state[key])
+    st.session_state['table_revision']=st.session_state.get('table_revision',0)+1
+
+if mobile:
+    st.subheader('Targets for this night')
+    page_count=max(1,(len(shown)+11)//12)
+    if st.session_state.get('mobile_page',1)>page_count:
+        st.session_state['mobile_page']=1
+    page=st.number_input('Target page',1,page_count,key='mobile_page')
+    st.caption(f'{len(shown)} targets · 12 per page')
+    page_rows=shown.iloc[(page-1)*12:page*12]
+    for offset in range(0,len(page_rows),2):
+        for column,(_,item) in zip(st.columns(2),page_rows.iloc[offset:offset+2].iterrows()):
+            with column:
+                with st.container(border=True):
+                    st.markdown(f'**{item.Target}**')
+                    st.caption(OBJECT_TYPE_LABELS.get(item.Type,item.Type))
+                    st.write(f'**Best window:** {item["Best window"]}')
+                    st.write(f'**Usable:** {item.Hours:.2f} h · **Peak:** {item["Peak °"]}°')
+                    st.write(f'**Moon-free:** {item["Moon-free h"]:.2f} h')
+                    key=f'mobile_plan_{day.isoformat()}_{item.Name}'
+                    st.session_state[key]=item.Name in planned
+                    st.checkbox('Tonight’s plan',key=key,on_change=mobile_plan_change,args=(item.Name,key))
+                    st.button('Explore target',key=f'mobile_explore_{item.Name}',on_click=mobile_choose_target,args=(item.Name,))
+else:
+    st.data_editor(shown.drop(columns='Name'),hide_index=True,use_container_width=True,
+                   key=table_key,on_change=edit_target_table,
+                   disabled=[column for column in shown.columns if column not in ('Name', 'Explore', 'Tonight’s plan')],
+                   column_config={'Type': st.column_config.TextColumn('Type',help='Object classification code. Expand Legend below for the full meanings.'),
+                                  'Explore': st.column_config.CheckboxColumn('Explore',help='Check to show this target’s details below.'),
+                                  'Tonight’s plan': st.column_config.CheckboxColumn('Tonight’s plan',help='Add or remove this target for the selected date.')})
+    st.caption('Check Tonight’s plan to add or remove a target. Check Explore to display its details below.')
+    
 with st.expander('Legend — object types and observing columns'):
     st.markdown('**Object type codes**')
     st.table(pd.DataFrame(
@@ -153,7 +197,7 @@ if planned:
     # Export the entire saved plan, even when a search hides some chosen targets.
     planned_results, plan_dates, plan_dark = calculate(planned_catalog,day,lat,lon,tz,minimum,moon_sep,south)
     planned_results = planned_results.sort_values('Best window')
-export_plan, export_all = st.columns(2)
+export_plan, export_all=(st.container(),st.container()) if mobile else st.columns(2)
 with export_plan:
     @st.cache_data(show_spinner=False,max_entries=4)
     def make_pdf(catalog,results,dates,dark,day,place,lat,lon,tz,minimum,moon_sep,south,weather,weather_note,fov_long,fov_short):
@@ -185,7 +229,12 @@ with export_all:
 st.caption('Geometry only: 5-minute samples, Sun below −18°, altitude and Moon limits applied. Weather is displayed separately; hours are not a clear-sky prediction. Moon-free means Moon below the geometric horizon.')
 with st.expander(f'Tonight’s plan — {day.isoformat()} ({len(planned)} targets)', expanded=bool(planned)):
     if not planned_results.empty:
-        st.dataframe(planned_results.drop(columns='Name'),hide_index=True,use_container_width=True)
+        if mobile:
+            for _,selected in planned_results.iterrows():
+                st.markdown(f'**{selected.Target}**')
+                st.write(f'{selected["Best window"]} · {selected.Hours:.2f} usable hours')
+        else:
+            st.dataframe(planned_results.drop(columns='Name'),hide_index=True,use_container_width=True)
     else:
         st.info('Check Tonight’s plan beside a target to include it in the plan export.')
 
@@ -211,7 +260,7 @@ def update_plan_checkbox():
     st.session_state['table_revision'] = st.session_state.get('table_revision', 0) + 1
 st.checkbox('Add to tonight’s plan',value=name in planned,key=plan_key,on_change=update_plan_checkbox,
             help=f'Saved automatically for the observing night {day.isoformat()}. Uncheck to remove this target.')
-a,b=st.columns([2,1])
+a,b=(st.container(),st.container()) if mobile else st.columns([2,1])
 with a:
     st.subheader(row.label)
     st.line_chart(track(row,dates,lat,lon,tz))
@@ -233,10 +282,17 @@ with b:
                 save(name,imaged,reimage,first,url,notes);st.rerun()
             except ValueError: st.error('Date must be YYYY-MM-DD, or blank.')
 st.subheader('Reference gallery')
-for col,(label,url) in zip(st.columns(3),image_urls(row)):
-    with col:
-        st.image(url,caption=label,use_container_width=True)
-        st.link_button('Open survey image',url)
+gallery=image_urls(row)
+if mobile:
+    image_index=st.selectbox('Survey view',range(len(gallery)),format_func=lambda i:gallery[i][0])
+    label,url=gallery[image_index]
+    st.image(url,caption=label,use_container_width=True)
+    st.link_button('Open survey image',url)
+else:
+    for col,(label,url) in zip(st.columns(3),image_urls(row)):
+        with col:
+            st.image(url,caption=label,use_container_width=True)
+            st.link_button('Open survey image',url)
 st.caption('Survey cutouts served by CDS HiPS2FITS: DSS2 (digitized photographic sky survey) and 2MASS (infrared). Three views, including two fields of view of DSS2; coverage and image availability vary. Infrared colors differ from visible-light imaging. These are reference images, not Seestar predictions.')
 if api_key:
     if st.button('Load / refresh Astrospheric forecast'):
@@ -252,7 +308,12 @@ if api_key:
             st.subheader('Astrospheric forecast')
             weather=forecast_us_units(weather)
             weather.index=pd.to_datetime(weather.index,utc=True).tz_convert(tz)
-            st.dataframe(weather,use_container_width=True)
+            if mobile:
+                hour=st.selectbox('Forecast hour',weather.index.tolist(),format_func=lambda t:t.strftime('%m/%d %I:%M %p %Z'))
+                for variable,value in weather.loc[hour].items():
+                    st.write(f'**{variable}:** {value:.1f}' if pd.notna(value) else f'**{variable}:** unavailable')
+            else:
+                st.dataframe(weather,use_container_width=True)
             st.caption('Temperature and dew point are °F; wind speed is mph. Cloud, transparency and seeing retain provider scales. Forecast times are local. Historical or distant selected dates may fall outside forecast coverage.')
             st.download_button('Export forecast',weather.to_csv(),'forecast.csv')
 else: st.info('Enter your Astrospheric API key in the sidebar to load weather. Visibility calculations work without a key.')
