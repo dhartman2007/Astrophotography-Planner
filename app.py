@@ -9,6 +9,30 @@ from core import catalog, plan, track, records, save, image_urls, forecast, DATA
 st.set_page_config(page_title='Darkwave Target Planner',page_icon='🔭',layout='wide')
 st.title('🔭 Darkwave Target Planner')
 st.caption('Messier • NGC • IC | Plan a night, explore the sky, track your images')
+OBJECT_TYPE_LABELS = {
+    "*": "Star",
+    "**": "Double star",
+    "*Ass": "Association of stars",
+    "OCl": "Open cluster",
+    "GCl": "Globular cluster",
+    "Cl+N": "Star cluster with nebula",
+    "G": "Galaxy",
+    "GPair": "Galaxy pair",
+    "GTrpl": "Galaxy triplet",
+    "GGroup": "Group of galaxies",
+    "PN": "Planetary nebula",
+    "HII": "Ionized hydrogen region",
+    "DrkN": "Dark nebula",
+    "EmN": "Emission nebula",
+    "Neb": "Nebula",
+    "RfN": "Reflection nebula",
+    "SNR": "Supernova remnant",
+    "Nova": "Nova star",
+    "NonEx": "Nonexistent catalog object",
+    "Dup": "Duplicate catalog entry",
+    "Other": "Other classification"
+}
+
 settings_file=DATA/'settings.json'
 settings=json.loads(settings_file.read_text()) if settings_file.exists() else {}
 with st.sidebar:
@@ -46,7 +70,8 @@ logs=records()
 query=st.text_input('Search object, common name, or constellation',placeholder='M27, NGC6992, Andromeda…')
 c1,c2,c3=st.columns(3)
 collection=c1.selectbox('Catalog',['Messier','NGC','IC','All'])
-types=c2.multiselect('Object types',sorted(df.Type.unique()))
+types=c2.multiselect('Object types',sorted(df.Type.unique()),
+                     format_func=lambda code: f'{code} — {OBJECT_TYPE_LABELS.get(code, code)}')
 status=c3.selectbox('Imaging status',['All','Not imaged / needs reimage','Imaged','Needs reimage'])
 filtered=df.copy()
 if collection=='Messier': filtered=filtered[filtered.M!='']
@@ -94,9 +119,33 @@ def edit_target_table():
 st.data_editor(shown.drop(columns='Name'),hide_index=True,use_container_width=True,
                key=table_key,on_change=edit_target_table,
                disabled=[column for column in shown.columns if column not in ('Name', 'Explore', 'Tonight’s plan')],
-               column_config={'Explore': st.column_config.CheckboxColumn('Explore',help='Check to show this target’s details below.'),
+               column_config={'Type': st.column_config.TextColumn('Type',help='Object classification code. Expand Legend below for the full meanings.'),
+                              'Explore': st.column_config.CheckboxColumn('Explore',help='Check to show this target’s details below.'),
                               'Tonight’s plan': st.column_config.CheckboxColumn('Tonight’s plan',help='Add or remove this target for the selected date.')})
 st.caption('Check Tonight’s plan to add or remove a target. Check Explore to display its details below.')
+
+with st.expander('Legend — object types and observing columns'):
+    st.markdown('**Object type codes**')
+    st.table(pd.DataFrame(
+        [(code, label) for code, label in OBJECT_TYPE_LABELS.items()],
+        columns=['Code', 'Object type'],
+    ))
+    st.markdown('**Observing columns**')
+    st.markdown("""
+| Column | Meaning |
+| --- | --- |
+| Explore | Check to display this target's details below. |
+| Hours | Total hours meeting the selected darkness, altitude, obstruction and Moon-separation limits. |
+| Peak ° | Highest target altitude during astronomical darkness; 0° is the horizon and 90° is overhead. |
+| Best window | Longest continuous usable imaging window, in the selected location's local time. |
+| Moon-free h | Hours above the altitude/obstruction limits during darkness while the Moon is below the horizon. |
+| Imaged | Your saved imaging-completion status; edit it in the target's imaging record. |
+| Needs reimage | Your saved reminder to image the target again. |
+| Tonight’s plan | Check to add the object to the selected date's plan and PDF. |
+""")
+    st.caption('Hours describe geometric visibility, not a weather forecast or guaranteed imaging time. Type codes follow OpenNGC.')
+    st.link_button('OpenNGC catalog definitions', 'https://github.com/mattiaverga/OpenNGC/blob/master/NGC_guide.txt')
+
 
 planned_results = pd.DataFrame()
 if planned:
@@ -168,7 +217,7 @@ with a:
     st.line_chart(track(row,dates,lat,lon,tz))
 with b:
     st.write(f'**RA / Dec:** {row.RA} / {row.Dec}')
-    st.write(f'**Constellation:** {row.Const} · **Type:** {row.Type}')
+    st.write(f'**Constellation:** {row.Const} · **Type:** {row.Type} — {OBJECT_TYPE_LABELS.get(row.Type, row.Type)}')
     st.write(f"**Size:** {row.MajAx or '?'} × {row.MinAx or '?'} arcmin")
     st.write(f"**V magnitude:** {row['V-Mag'] or 'Unknown'}")
     old=logmap.get(name,{})
