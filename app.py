@@ -3,11 +3,62 @@ from zoneinfo import ZoneInfo
 import json
 import pandas as pd
 import streamlit as st
+import altair as alt
 from plan_pdf import build_plan_pdf
 from imaging_guidance import guidance
 from core import catalog, plan, track, records, save, image_urls, forecast, DATA, remember_api_key, remembered_api_key, forecast_us_units, planned_targets, set_planned
 mobile = st.query_params.get('view','desktop') == 'mobile'
 st.set_page_config(page_title='Darkwave Target Planner',page_icon='🔭',layout='wide',initial_sidebar_state='collapsed' if mobile else 'auto')
+appearance=st.radio('Display theme',['Light','Dark'],index=0,horizontal=True,key='display_theme',
+                    help='Light follows your device theme. Dark uses black and red for nighttime observing.')
+night_mode=appearance=='Dark'
+st.markdown("""
+<style>
+/* The app supplies its own two-choice appearance control. */
+#MainMenu,[data-testid="stMainMenu"] {display:none;}
+.stApp {
+ --dw-background: #fafafa; --dw-surface: #f0f2f6; --dw-text: #17202e; --dw-border: #c8cdd6;
+}
+@media(prefers-color-scheme:dark) {
+ .stApp {--dw-background:#0e1117;--dw-surface:#262730;--dw-text:#fafafa;--dw-border:#555862;}
+}
+</style>
+""",unsafe_allow_html=True)
+if night_mode:
+    st.markdown("""<style>
+.stApp {--dw-background:#000;--dw-surface:#080000;--dw-text:#d74747;--dw-border:#682020;--primary-color:#d74747;}
+</style>""",unsafe_allow_html=True)
+st.markdown("""<style>
+.stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"],
+[data-testid="stHeader"], [data-testid="stSidebar"] {
+ background:var(--dw-background) !important; color:var(--dw-text) !important;
+ --background-color:var(--dw-background); --secondary-background-color:var(--dw-surface);
+ --text-color:var(--dw-text);
+}
+.stApp h1,.stApp h2,.stApp h3,.stApp p,.stApp label,.stApp small,
+.stApp [data-testid="stMarkdownContainer"],.stApp [data-testid="stCaptionContainer"],
+.stApp [data-testid="stWidgetLabel"] {color:var(--dw-text) !important;}
+.stApp input,.stApp textarea,.stApp button,.stApp select,
+.stApp [data-baseweb="select"] > div,.stApp [data-baseweb="input"],
+.stApp [data-baseweb="base-input"] {
+ color:var(--dw-text) !important;background:var(--dw-surface) !important;
+ border-color:var(--dw-border) !important;
+}
+.stApp [data-testid="stExpander"] details,
+.stApp [data-testid="stVerticalBlockBorderWrapper"] {border-color:var(--dw-border) !important;}
+</style>""",unsafe_allow_html=True)
+if night_mode:
+    st.markdown("""<style>
+.stApp a,.stApp svg,.stApp span {color:#d74747 !important;}
+.stApp input {accent-color:#d74747;caret-color:#d74747;}
+.stApp [data-testid="stImage"] img {filter:grayscale(1) brightness(.45) sepia(1) saturate(6) hue-rotate(-50deg);}
+.stApp [data-testid="stAlert"] {background:#100000 !important;color:#d74747 !important;}
+[data-baseweb="popover"],[data-baseweb="menu"],[role="listbox"] {
+ background:#080000 !important;color:#d74747 !important;
+}
+[data-baseweb="popover"] *,[role="option"] {color:#d74747 !important;background:#080000 !important;}
+</style>""",unsafe_allow_html=True)
+
 if mobile:
     st.markdown('### [← Switch to desktop version](?view=desktop)')
 else:
@@ -141,7 +192,7 @@ def mobile_plan_change(target,key):
     set_planned(day,target,st.session_state[key])
     st.session_state['table_revision']=st.session_state.get('table_revision',0)+1
 
-if mobile:
+if mobile or night_mode:
     st.subheader('Targets for this night')
     page_count=max(1,(len(shown)+11)//12)
     if st.session_state.get('mobile_page',1)>page_count:
@@ -163,7 +214,7 @@ if mobile:
                     st.checkbox('Tonight’s plan',key=key,on_change=mobile_plan_change,args=(item.Name,key))
                     st.button('Explore target',key=f'mobile_explore_{item.Name}',on_click=mobile_choose_target,args=(item.Name,))
 else:
-    st.data_editor(shown.drop(columns='Name'),hide_index=True,use_container_width=True,
+    st.data_editor(shown.drop(columns='Name').style.set_properties(**{'color':'#d74747','background-color':'#000000'}) if night_mode else shown.drop(columns='Name'),hide_index=True,use_container_width=True,
                    key=table_key,on_change=edit_target_table,
                    disabled=[column for column in shown.columns if column not in ('Name', 'Explore', 'Tonight’s plan')],
                    column_config={'Type': st.column_config.TextColumn('Type',help='Object classification code. Expand Legend below for the full meanings.'),
@@ -232,7 +283,7 @@ with export_all:
 st.caption('Geometry only: 5-minute samples, Sun below −18°, altitude and Moon limits applied. Weather is displayed separately; hours are not a clear-sky prediction. Moon-free means Moon below the geometric horizon.')
 with st.expander(f'Tonight’s plan — {day.isoformat()} ({len(planned)} targets)', expanded=bool(planned)):
     if not planned_results.empty:
-        if mobile:
+        if mobile or night_mode:
             for _,selected in planned_results.iterrows():
                 st.markdown(f'**{selected.Target}**')
                 st.write(f'{selected["Best window"]} · {selected.Hours:.2f} usable hours')
@@ -266,7 +317,16 @@ st.checkbox('Add to tonight’s plan',value=name in planned,key=plan_key,on_chan
 a,b=(st.container(),st.container()) if mobile else st.columns([2,1])
 with a:
     st.subheader(row.label)
-    st.line_chart(track(row,dates,lat,lon,tz))
+    if night_mode:
+        curve=track(row,dates,lat,lon,tz).rename_axis('Local time').reset_index()
+        chart=alt.Chart(curve.melt('Local time',var_name='Object',value_name='Altitude')).mark_line().encode(
+            x=alt.X('Local time:T',title='Time'),y=alt.Y('Altitude:Q',title='Altitude (degrees)'),
+            color=alt.Color('Object:N',scale=alt.Scale(range=['#d74747','#8c2525'])),
+            tooltip=['Local time:T','Object:N','Altitude:Q']
+        ).properties(background='#000000').configure_axis(labelColor='#d74747',titleColor='#d74747',gridColor='#351010',domainColor='#682020',tickColor='#682020').configure_legend(labelColor='#d74747',titleColor='#d74747').configure_view(stroke='#682020')
+        st.altair_chart(chart,use_container_width=True)
+    else:
+        st.line_chart(track(row,dates,lat,lon,tz))
 with b:
     st.write(f'**RA / Dec:** {row.RA} / {row.Dec}')
     st.write(f'**Constellation:** {row.Const} · **Type:** {row.Type} — {OBJECT_TYPE_LABELS.get(row.Type, row.Type)}')
@@ -311,7 +371,7 @@ if api_key:
             st.subheader('Astrospheric forecast')
             weather=forecast_us_units(weather)
             weather.index=pd.to_datetime(weather.index,utc=True).tz_convert(tz)
-            if mobile:
+            if mobile or night_mode:
                 hour=st.selectbox('Forecast hour',weather.index.tolist(),format_func=lambda t:t.strftime('%m/%d %I:%M %p %Z'))
                 for variable,value in weather.loc[hour].items():
                     st.write(f'**{variable}:** {value:.1f}' if pd.notna(value) else f'**{variable}:** unavailable')
