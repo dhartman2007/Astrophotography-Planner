@@ -8,7 +8,10 @@ from imaging_guidance import guidance
 from core import catalog, plan, track, records, save, image_urls, forecast, DATA, remember_api_key, remembered_api_key, forecast_us_units, planned_targets, set_planned
 mobile = st.query_params.get('view','desktop') == 'mobile'
 st.set_page_config(page_title='Darkwave Target Planner',page_icon='🔭',layout='wide',initial_sidebar_state='collapsed' if mobile else 'auto')
-st.markdown('**Display:** [Desktop](?view=desktop) · [Mobile / Samsung Fold](?view=mobile)')
+if mobile:
+    st.markdown('### [← Switch to desktop version](?view=desktop)')
+else:
+    st.markdown('### [Switch to mobile / Samsung Fold version →](?view=mobile)')
 if mobile:
     st.markdown("""<style>
 [data-testid="stMainBlockContainer"] {padding:1rem 1rem 3rem; max-width:1100px;}
