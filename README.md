@@ -1,4 +1,87 @@
-# Darkwave Target Planner
+# Darkwave Astro Suite
+
+One local browser application combining the Target Planner and SeeStar Logger.
+Use **Overview**, **Planner**, **Sessions**, and **Logger** across the top. The
+desktop/mobile switch and black/red night display apply to every workspace.
+
+## Start the suite
+
+On Windows, run **Start_Windows.bat**. On Linux, including a Raspberry Pi, use
+the virtual-environment commands below. The suite opens at
+http://localhost:8501. Images and log files must be accessible to the computer
+running Python; a phone browser does not provide access to its own filesystem.
+
+1. In the location panel, save the observing location and time zone. The saved
+   location is the collector's fallback; FITS site coordinates take precedence.
+   The Astrospheric key field is shared with the collector.
+2. Open **Logger** and enter the mounted Seestar image folder and log folder.
+   Save settings, then click **Start collector**. Optional aircraft, satellite
+   and JPL checks are disabled until explicitly enabled. JPL requires contact
+   email. Provider requests use the existing logger's caching/credit behavior;
+   Planner and Logger forecast caches remain separate.
+3. Build tonight's target list under **Planner**. Review files, recorded model
+   conditions and candidate coverage under **Sessions**. Link a session to its
+   catalog target, then explicitly review Imaged / Needs reimage.
+4. Click **Stop collector** and wait for Stopped before closing the suite
+   console. Closing the browser alone leaves collection running. Collection
+   must be started explicitly after restarting the suite.
+
+The suite makes no telescope control connection. The first scan establishes a
+baseline; existing images do not create historical sessions. Sessions estimate
+file activity rather than actual integration time. Forecast/model conditions
+are labeled; all-sky camera and local sensor feeds are not implemented here.
+
+## Updating existing installations
+
+Keep your existing Planner `data/` folder and replace application files with
+this branch, including `logger/`, `suite.py`, `suite_views.py`, and requirements.
+Run the launcher again to install the combined dependencies. Your catalog
+records and nightly plans remain in `data/imaging.sqlite3`.
+
+If updating with Git, **back up `data/` before checking out or merging this
+branch**. Git removes the previously tracked key/database files during that
+checkout. Restore your backed-up `imaging.sqlite3` and `astrospheric_api_key.txt`
+afterward; they will then remain local and ignored. Copying application files
+into an existing installation does not require deleting its data files.
+
+Stop the original Logger before enabling collection in the suite. Under
+**Logger**, import its installation folder to use its existing `logs/` folder
+in place and preserve advanced aircraft/satellite/JPL settings. Set the image
+folder explicitly and enter your Astrospheric key in the shared location panel.
+Alternatively, select the existing logs folder manually for read-only history.
+Existing logger desktop launchers are retained under `logger/`.
+
+Suite preferences are in `data/suite.json`; shared location settings and the
+private key retain their existing paths. Worker configuration and output live
+under `data/runtime/`. New log databases default to `data/logs/`. Runtime files,
+personal databases and credentials are ignored by Git. Files previously tracked
+in the Planner repo are removed from the new branch's index, while local copies
+are preserved. This does not remove prior Git history.
+
+The integration retains the original database schemas and links session IDs
+to catalog objects in `imaging.sqlite3`. Logger sessions and candidate coverage
+remain in their existing SQLite files, so no destructive database conversion
+is needed. Back up the Planner data folder and selected Logger logs folder.
+`DARKWAVE_SUITE_DATA` can select a different Planner/suite data directory.
+
+This is a local suite integration. Multi-machine synchronization between the
+NUC and traveling Pi, shared forecast caching, and a unified database migration
+are separate work. Do not synchronize live SQLite files or run two collectors
+against the same logs folder. Plan and image review do not automatically clear
+Needs reimage, including M31 and NGC869.
+
+## Validation
+
+```
+python -m pytest -q test_core.py test_suite.py
+python -m unittest discover -s logger/tests
+```
+
+The suite tests exercise shared settings, legacy configuration import,
+session/catalog links, collector shutdown and duplicate-writer rejection.
+The logger's native Windows GUI smoke test requires a built executable.
+
+## Target Planner
 
 Python application with a local browser interface. Install Python 3.11 or 3.12 from python.org on Windows, extract this entire folder to a writable location, and double-click Start_Windows.bat. Your browser opens at http://localhost:8501. Keep the console running; closing it stops the app.
 

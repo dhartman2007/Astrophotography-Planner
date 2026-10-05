@@ -8,7 +8,7 @@ from plan_pdf import build_plan_pdf
 from imaging_guidance import guidance
 from core import catalog, plan, track, records, save, image_urls, forecast, DATA, remember_api_key, remembered_api_key, forecast_us_units, planned_targets, set_planned
 mobile = st.query_params.get('view','desktop') == 'mobile'
-st.set_page_config(page_title='Darkwave Target Planner',page_icon='🔭',layout='wide',initial_sidebar_state='collapsed' if mobile else 'auto')
+st.set_page_config(page_title='Darkwave Astro Suite',page_icon='🔭',layout='wide',initial_sidebar_state='collapsed' if mobile else 'auto')
 appearance=st.radio('Display theme',['Light','Dark'],index=0,horizontal=True,key='display_theme',
                     help='Light follows your device theme. Dark uses black and red for nighttime observing.')
 night_mode=appearance=='Dark'
@@ -72,8 +72,11 @@ st.markdown("""<style>
 </style>""",unsafe_allow_html=True)
 switch_view = 'desktop' if mobile else 'mobile'
 switch_label = 'Desktop version' if mobile else 'Mobile version'
+switch_module = st.session_state.get('suite_module', st.query_params.get('module', 'Overview'))
+if switch_module not in ('Overview', 'Planner', 'Sessions', 'Logger'):
+    switch_module = 'Overview'
 st.markdown(
-    f'<a class="dw-view-switch" href="?view={switch_view}" target="_self" '
+    f'<a class="dw-view-switch" href="?view={switch_view}&module={switch_module}" target="_self" '
     f'aria-label="Switch to {switch_view} version">{switch_label}</a>',
     unsafe_allow_html=True,
 )
@@ -89,8 +92,15 @@ if mobile:
 [data-testid="stColumn"] {width:100% !important;flex:1 1 100% !important;}
 }
 </style>""",unsafe_allow_html=True)
-st.title('🔭 Darkwave Target Planner')
-st.caption('Messier • NGC • IC | Plan a night, explore the sky, track your images')
+st.title('🔭 Darkwave Astro Suite')
+st.caption('Plan your night • Record your sessions • Review your images')
+modules = ['Overview', 'Planner', 'Sessions', 'Logger']
+requested_module = st.query_params.get('module', 'Overview')
+if 'suite_module' not in st.session_state:
+    st.session_state.suite_module = requested_module if requested_module in modules else 'Overview'
+module = st.radio('Workspace', modules, key='suite_module',
+                  horizontal=True, label_visibility='collapsed')
+st.query_params['module'] = module
 OBJECT_TYPE_LABELS = {
     "*": "Star",
     "**": "Double star",
@@ -127,7 +137,7 @@ with settings_panel:
     try: ZoneInfo(tz)
     except Exception: st.error('Use an IANA time zone such as America/Chicago.'); st.stop()
     if st.button('Save location'):
-        settings_file.write_text(json.dumps(dict(place=place,lat=lat,lon=lon,tz=tz)))
+        settings_file.write_text(json.dumps({**settings, **dict(place=place,lat=lat,lon=lon,tz=tz)}))
         st.success('Location saved')
     day=st.date_input('Evening date',datetime.now(ZoneInfo(tz)).date())
     minimum=st.slider('Minimum target altitude',0,80,30)
@@ -143,6 +153,13 @@ with settings_panel:
             remember_api_key(api_key)
         except OSError:
             st.error('Could not save the API key. Check that the data folder is writable.')
+if module != 'Planner':
+    from suite_views import overview, session_history, logger_settings
+    if module == 'Overview': overview(day, tz)
+    elif module == 'Sessions': session_history(tz)
+    else: logger_settings()
+    st.stop()
+
 @st.cache_data(show_spinner='Loading OpenNGC catalogs…')
 def load(): return catalog()
 try: df=load()

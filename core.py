@@ -2,6 +2,7 @@ from pathlib import Path
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 import sqlite3
+import os
 import requests
 import pandas as pd
 import numpy as np
@@ -11,8 +12,8 @@ from astropy.time import Time
 from astropy.utils import iers
 iers.conf.auto_download = False
 ROOT = Path(__file__).resolve().parent
-DATA = ROOT / 'data'
-DATA.mkdir(exist_ok=True)
+DATA = Path(os.environ.get('DARKWAVE_SUITE_DATA', ROOT / 'data'))
+DATA.mkdir(parents=True, exist_ok=True)
 
 def catalog():
     frames = []
